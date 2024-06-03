@@ -1,0 +1,104 @@
+//Este es el código para el arduino nano 33 IoT
+/*
+  Requiere instalar libreria: ArduinoBLE
+*/
+
+#include <ArduinoBLE.h>     // incluye libreria para comunicacion por Bluetooth LE
+#include <Stepper.h>        // incluye libreria para usar motor stepper    
+
+BLEService ServicioLED("180A");   // crea un servicio ServicioLED con UUID de 180A
+BLEService ServicioSTEPPER("181A");   // crea un servicio ServicioSTEPPER con UUID de 181A
+
+BLEByteCharacteristic CaracteristicaColor("2A57", BLERead | BLEWrite);  // crea caracteristica de nombre CaracteristicaColor
+                  // con UUID de 2A47 para lectura y escritura
+#define SS_PIN 53
+#define RST_PIN 49
+int BUZZER = 13;                      //declaramos la variable entera BUZZER y la definimos como 13. Hacemos esto para que el código sea más entendible.
+const int stepsPerRevolution = 2048;  //ponemos el numero de steps del motor en nuestro caso 2048
+
+
+Stepper myStepper(stepsPerRevolution, 8, 10, 9, 11);    // inicializamos la libreria stepper en los pines de 8 a 11:
+MFRC522 rfid(SS_PIN, RST_PIN);                          // inicializamos la libreria MFRC522 en los pines 53 i 49
+
+
+void setup() {
+  myStepper.setSpeed(10); // programamos la velocidad a 10 steps por segundo
+  Serial.begin(9600);     // inicializamos el monitor serie a 9600 baudios
+  pinMode(BUZZER,OUTPUT); // declaramos pin Buzzer como salida
+  while (!Serial);      // esperamos a la inicializacion correcta del monitor serie
+
+  pinMode(LEDR, OUTPUT);    // componente rojo de LED RGB incorporado como salida
+  pinMode(LEDG, OUTPUT);    // componente verde de LED RGB incorporado como salida
+  pinMode(LEDB, OUTPUT);    // componente azul de LED RGB incorporado como salida
+  pinMode(LED_BUILTIN, OUTPUT);   // LED L incorporado como salida
+  
+  digitalWrite(LED_BUILTIN, LOW); // LED L apagado
+  digitalWrite(LEDR, HIGH);   // componente rojo apagado
+  digitalWrite(LEDG, HIGH);   // componente verde apagado
+  digitalWrite(LEDB, HIGH);   // componente azul apagado
+
+  if (!BLE.begin()) {     // si la inicializacion de Bluetooth LE falla
+    Serial.println("Fallo en inicio de Bluetooth LE");  // muestra texto por monitor serie
+    while (1);        // espera infinitamente
+  }
+
+  BLE.setLocalName("Nano 33 BLE Sense");  // nombre para el dispositivo
+  BLE.setAdvertisedService(ServicioLED);  // establece el nombre del servicio a difundir
+
+  ServicioLED.addCharacteristic(CaracteristicaColor); // agrega la caracteristica al servicio
+
+  BLE.addService(ServicioLED);      // agrega el servicio
+
+  CaracteristicaColor.writeValue(0);    // inicia la caracteristica con un valor de 0
+
+  BLE.advertise();        // inicia la difusion
+
+  Serial.println("Inicio de periferico"); // muestra texto por monitor serie
+}
+
+void loop() {
+  BLEDevice central = BLE.central();    // crea un objeto central para recibir datos
+
+  if (central) {        // si se conecta un central
+    Serial.print("Conectado a central: ");  // muestra texto por monitor serie
+    Serial.println(central.address());    // muestra direccion del central conectado
+    digitalWrite(LED_BUILTIN, HIGH);    // enciende LED L
+
+    while (central.connected()) {     // mientras que el central este conectado
+      if (CaracteristicaColor.written()) {    // si el central escribe un valor
+        switch (CaracteristicaColor.value()) {    // conmuta segun el caso
+          case 01:          // si se recibe un 1
+            Serial.println("LED rojo encendido"); // muestra texto por monitor serie
+                myStepper.step(stepsPerRevolution+200);
+                delay(1500);
+                lock = 1;
+                digitalWrite(BUZZER,HIGH);
+                delay(1000);
+                digitalWrite(BUZZER,LOW);
+                delay(1000);
+            break;          // fin del case 1
+          case 02:          // si se recibe un 2
+            Serial.println("LED verde encendido");  // muestra texto por monitor serie
+            myStepper.step(-stepsPerRevolution+200);
+            delay(1500);
+            lock = 0;
+            digitalWrite(BUZZER,HIGH);
+            delay(1000);
+            digitalWrite(BUZZER,LOW);
+            delay(1000);
+            break;          // fin de case 2
+          case 03:          // si recibe un 3
+            Serial.println("LED azul encendido"); // muestra texto por monitor serie
+            digitalWrite(LEDR, HIGH);     // apaga componente rojo de LED RGB
+            digitalWrite(LEDG, HIGH);     // apaga componente verde de LED RGB
+            digitalWrite(LEDB, LOW);      // enciende componente azul de LED RGB
+            break;          // fin de case 3
+          default:          // cualquier otro valor no especificado en los case
+            Serial.println("LEDs apagados");    // muestra texto por monitor serie
+            digitalWrite(LEDR, HIGH);     // apaga componente rojo de LED RGB
+            digitalWrite(LEDG, HIGH);     // apaga componente verde de LED RGB
+            digitalWrite(LEDB, HIGH);     // apaga componente azul de LED RGB
+            break;          // fin de default
+        }
+      }
+    }
